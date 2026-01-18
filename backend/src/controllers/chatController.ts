@@ -4,7 +4,6 @@ import Session from '../models/Session';
 import { AIService } from '../services/aiService';
 import { VoiceService } from '../services/voiceService';
 import { AdaptiveEngine } from '../services/adaptiveEngine';
-import { ProgressTracker } from '../services/progressTracker';
 
 export const sendMessage = async (req: Request, res: Response) => {
   try {
@@ -54,13 +53,18 @@ export const sendMessage = async (req: Request, res: Response) => {
     const aiResponse = await AIService.generateResponse(message, context);
     
     // Generate voice if enabled
-    let voiceUrl = null;
+    let voiceAudioUrl: string | undefined;
     if (profile.voiceSettings.enabled) {
       const analysis = AdaptiveEngine.analyzeUserState(profile, context.recentMessages);
-      voiceUrl = await VoiceService.generateVoice(
+      const voiceResponse = await VoiceService.generateVoice(
         aiResponse.text,
         analysis.voiceParameters
       );
+      
+      // Extract the audioUrl from the VoiceResponse object
+      if (voiceResponse) {
+        voiceAudioUrl = voiceResponse.audioUrl;
+      }
     }
     
     // Add assistant message
@@ -69,14 +73,14 @@ export const sendMessage = async (req: Request, res: Response) => {
       content: aiResponse.text,
       timestamp: new Date(),
       adaptations: aiResponse.adaptations,
-      voiceUrl: voiceUrl || undefined,
+      voiceUrl: voiceAudioUrl,
     });
     
     await session.save();
     
     res.json({
       text: aiResponse.text,
-      voiceUrl,
+      voiceUrl: voiceAudioUrl,
       adaptations: aiResponse.adaptations,
     });
   } catch (error) {

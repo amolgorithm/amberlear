@@ -2,6 +2,16 @@ import { ILearningProfile, IAdaptiveContext } from '../types';
 import { AdaptiveEngine } from './adaptiveEngine';
 import { config } from '../config/env';
 
+interface GeminiResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+  }>;
+}
+
 export class AIService {
   private static readonly SYSTEM_PROMPT = `You are an adaptive AI tutor for AMBERLEAR, a personalized learning platform.
 
@@ -67,7 +77,7 @@ IMPORTANT: Keep responses conversational and natural for voice synthesis. Avoid 
         throw new Error(`Gemini API error: ${response.statusText}`);
       }
       
-      const data = await response.json();
+      const data = await response.json() as GeminiResponse;
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'I apologize, I had trouble generating a response.';
       
       return {

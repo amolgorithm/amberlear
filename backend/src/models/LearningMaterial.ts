@@ -1,6 +1,6 @@
-import mongoose, { Schema } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
-export interface ILearningMaterial {
+export interface ILearningMaterial extends Document {
   userId: string;
   connectorId: string;
   externalId: string;

@@ -40,6 +40,17 @@ export const getMaterialById = async (req: Request, res: Response) => {
   }
 };
 
+function determineType(ext: string): string {
+  const typeMap: Record<string, string> = {
+    '.pdf': 'pdf',
+    '.doc': 'document',
+    '.docx': 'document',
+    '.txt': 'notes',
+    '.md': 'notes',
+  };
+  return typeMap[ext] || 'document';
+}
+
 export const uploadMaterial = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).userId;
@@ -64,7 +75,7 @@ export const uploadMaterial = async (req: Request, res: Response) => {
       connectorId: 'local_upload',
       externalId: uuidv4(),
       title: title || file.originalname,
-      type: this.determineType(fileExt),
+      type: determineType(fileExt),
       category: category || 'study_material',
       subject,
       topics: topics ? JSON.parse(topics) : [],
@@ -92,17 +103,6 @@ export const uploadMaterial = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Upload material error:', error);
     res.status(500).json({ error: 'Failed to upload material' });
-  }
-
-  private determineType(ext: string): string {
-    const typeMap: Record<string, string> = {
-      '.pdf': 'pdf',
-      '.doc': 'document',
-      '.docx': 'document',
-      '.txt': 'notes',
-      '.md': 'notes',
-    };
-    return typeMap[ext] || 'document';
   }
 };
 

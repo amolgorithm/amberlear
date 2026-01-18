@@ -1,5 +1,24 @@
-import LearningMaterial from '../models/LearningMaterial';
+import LearningMaterial, { ILearningMaterial } from '../models/LearningMaterial';
 import ProgressGraph from '../models/ProgressGraph';
+import { config } from '../config/env';
+
+interface GeminiResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+  }>;
+}
+
+interface MaterialAnalysis {
+  concepts?: string[];
+  prerequisites?: string[];
+  difficulty?: number;
+  qualityScore?: number;
+  estimatedTime?: number;
+}
 
 export class MaterialAnalyzer {
   static async analyzeMaterial(materialId: string) {
@@ -9,7 +28,6 @@ export class MaterialAnalyzer {
     }
 
     try {
-      // Use Claude to analyze the material
       const analysisPrompt = `Analyze this learning material:
 
 Title: ${material.title}
@@ -26,27 +44,39 @@ Provide:
 
 Respond in JSON format only.`;
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [
-            { role: 'user', content: analysisPrompt }
-          ],
-        }),
-      });
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${config.geminiApiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: analysisPrompt
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 1000,
+            },
+          }),
+        }
+      );
 
-      const data = await response.json();
-      const analysisText = data.content
-        .filter((item: any) => item.type === 'text')
-        .map((item: any) => item.text)
-        .join('\n');
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.statusText}`);
+      }
 
-      const analysis = JSON.parse(analysisText.replace(/```json|```/g, '').trim());
+      const data = await response.json() as GeminiResponse;
+      const analysisText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+
+      const analysis: MaterialAnalysis = JSON.parse(analysisText.replace(/```json|```/g, '').trim());
 
       // Update material with analysis
       material.analysis = {
@@ -58,7 +88,7 @@ Respond in JSON format only.`;
       };
 
       material.metadata.estimatedTime = analysis.estimatedTime || 30;
-      material.metadata.difficulty = this.mapDifficultyToLevel(analysis.difficulty);
+      material.metadata.difficulty = this.mapDifficultyToLevel(analysis.difficulty || 0.5);
 
       await material.save();
 
@@ -133,25 +163,37 @@ For each question provide:
 Respond in JSON format only as an array of questions.`;
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 2000,
-          messages: [
-            { role: 'user', content: quizPrompt }
-          ],
-        }),
-      });
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${config.geminiApiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: quizPrompt
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 2000,
+            },
+          }),
+        }
+      );
 
-      const data = await response.json();
-      const quizText = data.content
-        .filter((item: any) => item.type === 'text')
-        .map((item: any) => item.text)
-        .join('\n');
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.statusText}`);
+      }
+
+      const data = await response.json() as GeminiResponse;
+      const quizText = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
 
       const questions = JSON.parse(quizText.replace(/```json|```/g, '').trim());
 
