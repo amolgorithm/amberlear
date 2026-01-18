@@ -7,7 +7,10 @@
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "db:check": "mongosh --eval 'db.runCommand({ ping: 1 })'",
+    "db:seed": "ts-node src/scripts/seed.ts",
+    "db:reset": "ts-node src/scripts/reset.ts"
   },
   "dependencies": {
     "@notionhq/client": "^2.2.14",
