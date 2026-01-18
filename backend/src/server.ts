@@ -17,14 +17,22 @@ import quizRoutes from './routes/quiz.routes';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: false, // Required if you are streaming video/audio from different origins
+}));
+
 app.use(cors({
+  // Allows the frontend to communicate with the backend
   origin: process.env.NODE_ENV === 'production' 
     ? process.env.FRONTEND_URL 
-    : 'http://localhost:5173',
+    : ['http://localhost:5173', 'http://127.0.0.1:5173'], // Added 127.0.0.1 for Windows compatibility
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));

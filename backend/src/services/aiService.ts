@@ -47,7 +47,7 @@ IMPORTANT: Keep responses conversational and natural for voice synthesis. Avoid 
     
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${config.geminiApiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${config.geminiApiKey}`,
         {
           method: 'POST',
           headers: {

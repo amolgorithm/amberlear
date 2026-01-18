@@ -5,10 +5,16 @@ import { AIService } from '../services/aiService';
 import { VoiceService } from '../services/voiceService';
 import { AdaptiveEngine } from '../services/adaptiveEngine';
 
+// Define the shape of the HeyGen API response to fix TS18046
+interface HeyGenTokenResponse {
+  data: {
+    token: string;
+  };
+}
+
 export const sendMessage = async (req: Request, res: Response) => {
   try {
-    const { userId } = req.body;
-    const { message, currentTopic } = req.body;
+    const { userId, message, currentTopic } = req.body;
     
     // Get user profile
     const profile = await LearningProfile.findOne({ userId });
@@ -52,18 +58,21 @@ export const sendMessage = async (req: Request, res: Response) => {
     // Generate AI response
     const aiResponse = await AIService.generateResponse(message, context);
     
-    // Generate voice if enabled
+    // Generate voice if enabled (but don't fail if it errors)
     let voiceAudioUrl: string | undefined;
     if (profile.voiceSettings.enabled) {
-      const analysis = AdaptiveEngine.analyzeUserState(profile, context.recentMessages);
-      const voiceResponse = await VoiceService.generateVoice(
-        aiResponse.text,
-        analysis.voiceParameters
-      );
-      
-      // Extract the audioUrl from the VoiceResponse object
-      if (voiceResponse) {
-        voiceAudioUrl = voiceResponse.audioUrl;
+      try {
+        const analysis = AdaptiveEngine.analyzeUserState(profile, context.recentMessages);
+        const voiceResponse = await VoiceService.generateVoice(
+          aiResponse.text,
+          analysis.voiceParameters
+        );
+        
+        if (voiceResponse) {
+          voiceAudioUrl = voiceResponse.audioUrl;
+        }
+      } catch (voiceError) {
+        console.warn('Voice generation failed (non-critical):', voiceError instanceof Error ? voiceError.message : voiceError);
       }
     }
     
@@ -86,5 +95,26 @@ export const sendMessage = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Chat error:', error);
     res.status(500).json({ error: 'Failed to process message' });
+  }
+};
+
+export const getHeyGenToken = async (req: Request, res: Response) => {
+  try {
+    const response = await fetch("https://api.heygen.com/v1/streaming.create_token", {
+      method: "POST",
+      headers: { 
+        "x-api-key": process.env.HEYGEN_API_KEY as string,
+        "Content-Type": "application/json"
+      },
+    });
+
+    // Cast the response so TypeScript knows the structure
+    const data = await response.json() as HeyGenTokenResponse;
+
+    // This is now type-safe and won't crash nodemon
+    res.json({ token: data.data.token }); 
+  } catch (error) {
+    console.error("HeyGen Token Error:", error);
+    res.status(500).json({ error: "Failed to fetch avatar session token" });
   }
 };
