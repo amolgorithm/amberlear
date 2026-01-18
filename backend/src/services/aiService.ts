@@ -1,5 +1,6 @@
 import { ILearningProfile, IAdaptiveContext } from '../types';
 import { AdaptiveEngine } from './adaptiveEngine';
+import { config } from '../config/env';
 
 export class AIService {
   private static readonly SYSTEM_PROMPT = `You are an adaptive AI tutor for AMBERLEAR, a personalized learning platform.
@@ -11,7 +12,9 @@ Your core responsibilities:
 4. Use learning simulations, not just explanations
 5. Track what works and what doesn't
 
-You are NOT a generic chatbot. You are a persistent tutor who remembers everything about this learner.`;
+You are NOT a generic chatbot. You are a persistent tutor who remembers everything about this learner.
+
+IMPORTANT: Keep responses conversational and natural for voice synthesis. Avoid excessive technical jargon unless appropriate for the user's level.`;
 
   static async generateResponse(
     userMessage: string,
@@ -33,26 +36,39 @@ You are NOT a generic chatbot. You are a persistent tutor who remembers everythi
     );
     
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [
-            { role: 'user', content: prompt }
-          ],
-          system: this.SYSTEM_PROMPT,
-        }),
-      });
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${config.geminiApiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `${this.SYSTEM_PROMPT}\n\n${prompt}`
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.95,
+              maxOutputTokens: 1024,
+            },
+          }),
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.statusText}`);
+      }
       
       const data = await response.json();
-      const text = data.content
-        .filter((item: any) => item.type === 'text')
-        .map((item: any) => item.text)
-        .join('\n');
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'I apologize, I had trouble generating a response.';
       
       return {
         text,
@@ -88,6 +104,6 @@ PERFORMANCE METRICS:
 
 USER MESSAGE: ${userMessage}
 
-Respond as their adaptive tutor, considering their profile and current state. Use the "${approach}" teaching approach.`;
+Respond as their adaptive tutor, considering their profile and current state. Use the "${approach}" teaching approach. Keep your response conversational and suitable for voice synthesis.`;
   }
 }
