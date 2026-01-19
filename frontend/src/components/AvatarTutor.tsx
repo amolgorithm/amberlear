@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import StreamingAvatar, { 
   AvatarQuality, 
   StreamingEvents, 
-  TaskType 
+  TaskType,
+  TaskMode
 } from "@heygen/streaming-avatar";
 
 interface AvatarTutorProps {
@@ -15,15 +16,16 @@ const AvatarTutor: React.FC<AvatarTutorProps> = ({ isSpeaking, currentText }) =>
   const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const avatarRef = useRef<StreamingAvatar | null>(null);
+  const lastSpokenTextRef = useRef<string>('');
 
   // Fetch token from YOUR backend
   const fetchAccessToken = async (): Promise<string> => {
     const token = localStorage.getItem('amberlear_token');
     
-    // Changed from localhost:5000 to match your backend port
     const response = await fetch('http://localhost:3001/api/chat/token', {
       method: 'POST',
       headers: {
@@ -80,11 +82,22 @@ const AvatarTutor: React.FC<AvatarTutorProps> = ({ isSpeaking, currentText }) =>
         setInitialized(false);
       });
 
-      // Start the avatar - following the docs example exactly
+      // Listen for avatar talking events
+      avatar.on(StreamingEvents.AVATAR_START_TALKING, () => {
+        console.log('Avatar started talking');
+        setIsAvatarSpeaking(true);
+      });
+
+      avatar.on(StreamingEvents.AVATAR_STOP_TALKING, () => {
+        console.log('Avatar stopped talking');
+        setIsAvatarSpeaking(false);
+      });
+
+      // Start the avatar
       console.log('Starting avatar...');
       const sessionData = await avatar.createStartAvatar({
         quality: AvatarQuality.High,
-        avatarName: 'Wayne_20240711', // From the docs
+        avatarName: 'Wayne_20240711',
       });
       
       console.log('✓ Avatar started, session:', sessionData.session_id);
@@ -111,23 +124,38 @@ const AvatarTutor: React.FC<AvatarTutorProps> = ({ isSpeaking, currentText }) =>
     }
   };
 
-  // Speak when currentText changes
+  // Speak when currentText changes - FIXED to use exact text
   useEffect(() => {
     const speak = async () => {
-      if (isSpeaking && currentText && avatarRef.current && initialized) {
+      if (
+        initialized && 
+        avatarRef.current && 
+        currentText && 
+        currentText.trim() !== '' &&
+        currentText !== lastSpokenTextRef.current &&
+        isSpeaking
+      ) {
         try {
-          console.log('Speaking:', currentText.substring(0, 30) + '...');
+          console.log('🗣️ Avatar speaking EXACT text:', currentText);
+          lastSpokenTextRef.current = currentText;
+          
+          // Use TaskMode.SYNC to ensure exact text is spoken
           await avatarRef.current.speak({
             text: currentText,
-            task_type: TaskType.TALK
+            task_type: TaskType.TALK,
+            task_mode: TaskMode.SYNC // Force exact text
           });
-        } catch (err) {
-          console.error('Speak error:', err);
+          
+          console.log('✓ Speech command sent');
+        } catch (err: any) {
+          console.error('❌ Speak error:', err);
+          setError(`Failed to speak: ${err.message}`);
         }
       }
     };
+    
     speak();
-  }, [isSpeaking, currentText, initialized]);
+  }, [initialized, currentText, isSpeaking]);
 
   // Cleanup
   useEffect(() => {
@@ -208,11 +236,18 @@ const AvatarTutor: React.FC<AvatarTutorProps> = ({ isSpeaking, currentText }) =>
         </div>
       )}
 
-      {/* Speaking indicator */}
-      {initialized && isSpeaking && (
+      {/* Speaking indicator - Updated to use actual avatar speaking state */}
+      {initialized && isAvatarSpeaking && (
         <div className="absolute top-4 left-4 flex items-center gap-2 bg-green-500/20 backdrop-blur-sm px-4 py-2 rounded-full border border-green-500/50">
           <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
           <span className="text-sm text-green-300 font-medium">Speaking...</span>
+        </div>
+      )}
+
+      {/* Debug info - Remove in production */}
+      {initialized && (
+        <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-sm px-3 py-1 rounded text-xs text-white">
+          Session: {sessionId?.substring(0, 8)}...
         </div>
       )}
     </div>
