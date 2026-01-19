@@ -5,7 +5,6 @@ interface Message {
   content: string;
   timestamp: Date;
   adaptations?: string[];
-  voiceUrl?: string;
 }
 
 export function useTutorChat(userId: string) {
@@ -13,31 +12,27 @@ export function useTutorChat(userId: string) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [currentSubtitle, setCurrentSubtitle] = useState('');
+  const [currentResponse, setCurrentResponse] = useState('');
   
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
   
-  // Initialize speech recognition
+  // Speech Recognition Setup
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = true;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
       
       recognitionRef.current.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0].transcript)
-          .join('');
-        
-        if (event.results[0].isFinal) {
-          sendMessage(transcript);
-          setIsListening(false);
-        }
+        const transcript = event.results[0][0].transcript;
+        console.log('Heard:', transcript);
+        sendMessage(transcript);
       };
       
       recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
+        console.error('Speech error:', event.error);
         setIsListening(false);
       };
       
@@ -49,8 +44,12 @@ export function useTutorChat(userId: string) {
   
   const startListening = useCallback(() => {
     if (recognitionRef.current && !isListening) {
-      recognitionRef.current.start();
-      setIsListening(true);
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (err) {
+        console.error('Start listening error:', err);
+      }
     }
   }, [isListening]);
   
@@ -62,16 +61,19 @@ export function useTutorChat(userId: string) {
   }, [isListening]);
   
   const sendMessage = async (content: string) => {
+    if (!content.trim()) return;
+    
     // Add user message
     const userMessage: Message = {
       role: 'user',
       content,
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     
     try {
       const token = localStorage.getItem('amberlear_token');
+      
       const response = await fetch('/api/chat/message', {
         method: 'POST',
         headers: {
@@ -86,95 +88,63 @@ export function useTutorChat(userId: string) {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to send message');
+        throw new Error('Failed to get response');
       }
       
       const data = await response.json();
       
+      // Add assistant message
       const assistantMessage: Message = {
         role: 'assistant',
         content: data.text,
         timestamp: new Date(),
         adaptations: data.adaptations,
-        voiceUrl: data.voiceUrl,
       };
       
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages(prev => [...prev, assistantMessage]);
       
-      // Play voice response
-      if (data.voiceUrl) {
-        playVoiceResponse(data.voiceUrl, data.text);
-      }
+      // Trigger avatar speech
+      setCurrentResponse(data.text);
+      setIsSpeaking(true);
+      
+      // Animate subtitles
+      animateSubtitles(data.text);
+      
     } catch (error) {
       console.error('Chat error:', error);
       
       const errorMessage: Message = {
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: 'Sorry, I had trouble processing that. Can you try again?',
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      
+      setMessages(prev => [...prev, errorMessage]);
     }
   };
   
-  const playVoiceResponse = (audioUrl: string, text: string) => {
-    // Stop any currently playing audio
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    
-    const audio = new Audio(audioUrl);
-    audioRef.current = audio;
-    
-    setIsSpeaking(true);
-    setCurrentSubtitle(text);
-    
-    // Animate subtitles word by word
+  const animateSubtitles = (text: string) => {
     const words = text.split(' ');
-    let wordIndex = 0;
-    const wordsPerSecond = 2.5; // Average speaking speed
-    const intervalMs = 1000 / wordsPerSecond;
+    let index = 0;
     
-    const subtitleInterval = setInterval(() => {
-      if (wordIndex < words.length) {
-        const displayWords = words.slice(Math.max(0, wordIndex - 10), wordIndex + 1);
-        setCurrentSubtitle(displayWords.join(' ') + (wordIndex < words.length - 1 ? '...' : ''));
-        wordIndex++;
+    const interval = setInterval(() => {
+      if (index < words.length) {
+        const chunk = words.slice(Math.max(0, index - 8), index + 1).join(' ');
+        setCurrentSubtitle(chunk + (index < words.length - 1 ? '...' : ''));
+        index++;
       } else {
-        clearInterval(subtitleInterval);
+        clearInterval(interval);
+        setTimeout(() => {
+          setCurrentSubtitle('');
+          setIsSpeaking(false);
+        }, 2000);
       }
-    }, intervalMs);
-    
-    audio.onended = () => {
-      setIsSpeaking(false);
-      setCurrentSubtitle('');
-      audioRef.current = null;
-      clearInterval(subtitleInterval);
-    };
-    
-    audio.onerror = () => {
-      console.error('Audio playback error');
-      setIsSpeaking(false);
-      setCurrentSubtitle('');
-      audioRef.current = null;
-      clearInterval(subtitleInterval);
-    };
-    
-    audio.play().catch((error) => {
-      console.error('Failed to play audio:', error);
-      setIsSpeaking(false);
-      setCurrentSubtitle('');
-      clearInterval(subtitleInterval);
-    });
+    }, 400);
   };
   
-  // Cleanup on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
@@ -186,6 +156,7 @@ export function useTutorChat(userId: string) {
     isSpeaking,
     isListening,
     currentSubtitle,
+    currentResponse, // This is what the avatar should speak
     sendMessage,
     startListening,
     stopListening,

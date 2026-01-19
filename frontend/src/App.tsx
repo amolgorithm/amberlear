@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Volume2, VolumeX, Settings, User, BookOpen } from 'lucide-react';
+import React, { useState } from 'react';
+import { Mic, MicOff, BookOpen, User } from 'lucide-react';
 import AvatarTutor from './components/AvatarTutor';
 import { useAuth } from './hooks/useAuth';
 import { useTutorChat } from './hooks/useTutorChat';
 
 function App() {
   const { user, login, register, logout } = useAuth();
-  const [showAuth, setShowAuth] = useState(true);
   
   if (!user) {
     return (
@@ -57,26 +56,26 @@ function TutorInterface({ userId }: { userId: string }) {
     messages,
     isSpeaking,
     isListening,
+    currentSubtitle,
+    currentResponse,
     sendMessage,
     startListening,
     stopListening,
-    currentSubtitle,
   } = useTutorChat(userId);
   
   const [inputText, setInputText] = useState('');
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
   
-  const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
-    
-    await sendMessage(inputText);
-    setInputText('');
+  const handleSend = () => {
+    if (inputText.trim()) {
+      sendMessage(inputText);
+      setInputText('');
+    }
   };
   
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      handleSend();
     }
   };
   
@@ -84,59 +83,63 @@ function TutorInterface({ userId }: { userId: string }) {
     <div className="max-w-7xl mx-auto p-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Avatar Section */}
-        <div className="bg-gray-800 rounded-2xl p-8 border border-gray-700">
+        <div className="space-y-4">
           <AvatarTutor
             isSpeaking={isSpeaking}
-            currentText={currentSubtitle}
-            emotionalState={{
-              confidence: 0.7,
-              warmth: 0.8,
-            }}
+            currentText={currentResponse}
           />
           
           {/* Subtitle Display */}
-          <div className="mt-6 min-h-[80px] bg-gray-900 rounded-lg p-4 border border-gray-700">
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 min-h-[80px] flex items-center justify-center">
             <p className="text-gray-300 text-center italic">
-              {currentSubtitle || (isSpeaking ? '...' : 'Ready to learn!')}
+              {currentSubtitle || (isSpeaking ? '...' : 'Ready to help you learn!')}
             </p>
           </div>
         </div>
         
         {/* Chat Section */}
-        <div className="bg-gray-800 rounded-2xl border border-gray-700 flex flex-col">
-          {/* Message History */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[500px]">
-            {messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                    msg.role === 'user'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-700 text-gray-100'
-                  }`}
-                >
-                  <p className="text-sm">{msg.content}</p>
-                  {msg.adaptations && msg.adaptations.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {msg.adaptations.map((adapt, i) => (
-                        <span
-                          key={i}
-                          className="text-xs bg-gray-800 px-2 py-1 rounded-full text-purple-300"
-                        >
-                          {adapt}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+        <div className="bg-gray-800 rounded-2xl border border-gray-700 flex flex-col h-[600px]">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center text-gray-500">
+                <div className="text-5xl mb-4">💬</div>
+                <p className="text-lg">Start a conversation</p>
+                <p className="text-sm">Ask me anything you'd like to learn!</p>
               </div>
-            ))}
+            ) : (
+              messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                      msg.role === 'user'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-700 text-gray-100'
+                    }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    {msg.adaptations && msg.adaptations.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {msg.adaptations.map((adapt, i) => (
+                          <span
+                            key={i}
+                            className="text-xs bg-gray-800 px-2 py-1 rounded-full text-purple-300"
+                          >
+                            {adapt}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
           
-          {/* Input Section */}
+          {/* Input */}
           <div className="p-6 border-t border-gray-700">
             <div className="flex gap-3">
               <button
@@ -146,7 +149,7 @@ function TutorInterface({ userId }: { userId: string }) {
                     ? 'bg-red-600 hover:bg-red-700 animate-pulse'
                     : 'bg-purple-600 hover:bg-purple-700'
                 }`}
-                title={isListening ? 'Stop listening' : 'Start voice input'}
+                title={isListening ? 'Stop' : 'Voice input'}
               >
                 {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </button>
@@ -156,67 +159,29 @@ function TutorInterface({ userId }: { userId: string }) {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Ask me anything..."
+                placeholder="Type your question..."
                 className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
+                disabled={isListening}
               />
               
               <button
-                onClick={handleSendMessage}
-                disabled={!inputText.trim()}
+                onClick={handleSend}
+                disabled={!inputText.trim() || isListening}
                 className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
               >
                 Send
               </button>
-              
-              <button
-                onClick={() => setVoiceEnabled(!voiceEnabled)}
-                className={`p-3 rounded-full transition-all ${
-                  voiceEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'
-                }`}
-                title={voiceEnabled ? 'Voice enabled' : 'Voice disabled'}
-              >
-                {voiceEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-              </button>
             </div>
             
             {isListening && (
-              <p className="mt-2 text-sm text-purple-400 animate-pulse">
-                Listening...
+              <p className="mt-2 text-sm text-purple-400 animate-pulse text-center">
+                🎤 Listening...
               </p>
             )}
           </div>
         </div>
       </div>
-      
-      {/* Quick Actions */}
-      <div className="mt-6 grid grid-cols-3 gap-4">
-        <QuickAction
-          icon="📚"
-          title="Study Materials"
-          description="Access your synced content"
-        />
-        <QuickAction
-          icon="📊"
-          title="Progress"
-          description="Track your learning journey"
-        />
-        <QuickAction
-          icon="⚙️"
-          title="Settings"
-          description="Customize your experience"
-        />
-      </div>
     </div>
-  );
-}
-
-function QuickAction({ icon, title, description }: { icon: string; title: string; description: string }) {
-  return (
-    <button className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl p-6 text-left transition-colors">
-      <div className="text-3xl mb-2">{icon}</div>
-      <h3 className="font-semibold text-white mb-1">{title}</h3>
-      <p className="text-sm text-gray-400">{description}</p>
-    </button>
   );
 }
 
