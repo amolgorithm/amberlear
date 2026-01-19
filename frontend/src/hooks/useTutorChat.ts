@@ -13,55 +13,133 @@ export function useTutorChat(userId: string) {
   const [isListening, setIsListening] = useState(false);
   const [currentSubtitle, setCurrentSubtitle] = useState('');
   const [currentResponse, setCurrentResponse] = useState('');
+  const [micError, setMicError] = useState<string | null>(null);
   
   const recognitionRef = useRef<any>(null);
   
-  // Speech Recognition Setup
+  // Speech Recognition Setup with better error handling
   useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    // Check for HTTPS
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      setMicError('Speech recognition requires HTTPS or localhost');
+      return;
+    }
+
+    // Check for browser support
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      setMicError('Speech recognition not supported. Please use Chrome, Edge, or Safari.');
+      return;
+    }
+
+    try {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
+      recognitionRef.current.interimResults = true; // Changed to true for better UX
       recognitionRef.current.lang = 'en-US';
+      recognitionRef.current.maxAlternatives = 1;
+      
+      recognitionRef.current.onstart = () => {
+        console.log('✓ Speech recognition started');
+        setIsListening(true);
+        setMicError(null);
+      };
       
       recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
+        const result = event.results[event.results.length - 1];
+        const transcript = result[0].transcript;
+        
         console.log('Heard:', transcript);
-        sendMessage(transcript);
+        
+        // Only send if it's a final result
+        if (result.isFinal) {
+          console.log('Final transcript:', transcript);
+          sendMessage(transcript);
+        } else {
+          // Show interim results as subtitle
+          setCurrentSubtitle(`Listening: "${transcript}"...`);
+        }
       };
       
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech error:', event.error);
+        
+        const errorMessages: Record<string, string> = {
+          'no-speech': 'No speech detected. Please try again.',
+          'audio-capture': 'Microphone not found. Please check permissions.',
+          'not-allowed': 'Microphone access denied. Please allow microphone access.',
+          'network': 'Network error. Please check your connection.',
+          'aborted': 'Speech recognition aborted.',
+        };
+        
+        setMicError(errorMessages[event.error] || `Error: ${event.error}`);
         setIsListening(false);
       };
       
       recognitionRef.current.onend = () => {
+        console.log('Speech recognition ended');
         setIsListening(false);
+        setCurrentSubtitle('');
       };
+
+      console.log('✓ Speech recognition initialized');
+      
+    } catch (err) {
+      console.error('Failed to initialize speech recognition:', err);
+      setMicError('Failed to initialize speech recognition');
     }
   }, []);
   
-  const startListening = useCallback(() => {
-    if (recognitionRef.current && !isListening) {
-      try {
-        recognitionRef.current.start();
-        setIsListening(true);
-      } catch (err) {
-        console.error('Start listening error:', err);
+  const startListening = useCallback(async () => {
+    if (!recognitionRef.current) {
+      setMicError('Speech recognition not available');
+      return;
+    }
+
+    if (isListening) {
+      console.log('Already listening');
+      return;
+    }
+
+    try {
+      // Request microphone permission first
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      console.log('Starting speech recognition...');
+      recognitionRef.current.start();
+      setMicError(null);
+      
+    } catch (err: any) {
+      console.error('Start listening error:', err);
+      
+      if (err.name === 'NotAllowedError') {
+        setMicError('Microphone permission denied. Please allow access.');
+      } else if (err.name === 'NotFoundError') {
+        setMicError('No microphone found. Please connect a microphone.');
+      } else {
+        setMicError(`Error: ${err.message}`);
       }
     }
   }, [isListening]);
   
   const stopListening = useCallback(() => {
     if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+      try {
+        recognitionRef.current.stop();
+        console.log('Stopped listening');
+      } catch (err) {
+        console.error('Stop error:', err);
+      }
     }
   }, [isListening]);
   
   const sendMessage = async (content: string) => {
     if (!content.trim()) return;
+    
+    // Clear listening state
+    setIsListening(false);
+    setCurrentSubtitle('');
     
     // Add user message
     const userMessage: Message = {
@@ -146,7 +224,11 @@ export function useTutorChat(userId: string) {
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (err) {
+          // Ignore cleanup errors
+        }
       }
     };
   }, []);
@@ -156,7 +238,8 @@ export function useTutorChat(userId: string) {
     isSpeaking,
     isListening,
     currentSubtitle,
-    currentResponse, // This is what the avatar should speak
+    currentResponse,
+    micError,
     sendMessage,
     startListening,
     stopListening,
